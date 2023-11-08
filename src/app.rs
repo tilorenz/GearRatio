@@ -234,6 +234,10 @@ impl RitzelApp {
 
     fn gear_column(&mut self, ui: &mut egui::Ui, column: Column) {
         ui.vertical(|ui| {
+            ui.label(egui::RichText::new(
+                if column == Column::Left { "Input Gear" } else { "Output Gear" }
+            ).strong());
+
             let vars = match column {
                 Column::Left => &mut self.left,
                 _            => &mut self.right,
@@ -250,7 +254,7 @@ impl RitzelApp {
         ui.vertical(|ui| {
             // given ratio row
             ui.horizontal(|ui| {
-                ui.label("Given Ratio: ");
+                ui.label(egui::RichText::new("Given Ratio: ").strong());
                 let changed = number_spinner(ui, &mut self.given_ratio, &mut self.gr_str, self.locked_column != Column::Ratio, 0.1, 0.1, 100.0, 2, Column::Ratio as i32);
                 if changed {
                     self.recompute_from(Column::Ratio);
@@ -259,7 +263,7 @@ impl RitzelApp {
 
             // actual ratio row
             ui.horizontal(|ui| {
-                ui.label("Actual Ratio: ");
+                ui.label(egui::RichText::new("Actual Ratio: ").strong());
                 ui.label(&self.ar_str);
             });
 
