@@ -1,5 +1,7 @@
+use std::{fmt::Display, str::FromStr};
+
 use eframe::egui;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, clamp_max};
 use num_derive::FromPrimitive;
 
 /*
@@ -51,7 +53,7 @@ impl Column {
 }
 
 struct SideVars {
-    column: Column,
+    //column: Column,
     teeth: u32,
     t_str: String,
 }
@@ -59,7 +61,7 @@ struct SideVars {
 impl SideVars {
     fn new(column: Column, teeth: u32) -> SideVars {
         SideVars{
-            column,
+            //column,
             teeth,
             t_str: String::from(teeth.to_string()),
         }
@@ -82,16 +84,10 @@ struct NumberSpinnerState {
     rect_max: egui::Pos2,
 }
 
-//impl Default for NumberSpinnerState {
-    //fn default() -> Self {
-        //Self {
-            //offset: 0.0,
-            //size: egui::Vec2 { x: 30.0, y: 100.0 },
-        //}
-    //}
-//}
-
-fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, interactive: bool, step: f32, min_value: f32, max_value: f32, precision: usize, uiid: i32) -> bool
+fn number_spinner<T>(ui: &mut egui::Ui, value: &mut T, val_str: &mut String, interactive: bool, step: T, min_value: T, max_value: T, precision: usize, uiid: i32) -> bool
+where
+    // aaaah just give me a sane number type
+    T: num_traits::NumAssign + PartialOrd + Display + FromPrimitive + FromStr + Copy
 {
     let mut changed = false;
     let myid = egui::Id::new(34234 + uiid);
@@ -127,11 +123,17 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
                 //println!("offset: {}", state.offset);
                 if state.offset > 20.0 {
                     state.offset = 0.0;
-                    *value = (*value + step).min(max_value);
+                    *value = clamp_max(*value + step, max_value);
                     changed = true;
                 } else if state.offset < -20.0 {
                     state.offset = 0.0;
-                    *value = (*value - step).max(min_value);
+                    //*value = clamp_min(*value - step, min_value); // but avoid uint underflows
+                    //(-0.00001 to fix float precision problems, otherwise ratio only goes to 0.2)
+                    *value = if *value >= min_value + step - T::from_f32(0.00001).unwrap() {
+                        *value - step
+                    } else {
+                        *value
+                    };
                     changed = true;
                 }
                 ui.ctx().data_mut(|d| d.insert_temp(myid, state));
@@ -146,11 +148,21 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
             .interactive(interactive)
             .desired_width(80.0);
 
-        ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value + step * 2.0).min(max_value))).weak());
-        ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value + step).min(max_value))).weak());
+        ui.label(egui::RichText::new(format!("{1:.0$}", precision, clamp_max(*value + step * T::from_f32(2.0).unwrap(), max_value))).weak());
+        ui.label(egui::RichText::new(format!("{1:.0$}", precision, clamp_max(*value + step, max_value))).weak());
         let te_response = ui.add(te);
-        ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value - step).max(min_value))).weak());
-        ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value - step * 2.0).max(min_value))).weak());
+        ui.label(egui::RichText::new(
+                if *value  >= min_value + step - T::from_f32(0.00001).unwrap() {
+                    format!("{1:.0$}", precision, *value - step)
+                } else {
+                    "".to_owned()
+                }).weak());
+        ui.label(egui::RichText::new(
+                if *value >= min_value + step + step - T::from_f32(0.00001).unwrap() {
+                    format!("{1:.0$}", precision, *value - step - step)
+                } else {
+                    "".to_owned()
+                }).weak());
 
         if state.rect_max != ui.min_rect().max {
             state.rect_max = ui.min_rect().max;
@@ -159,12 +171,12 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
 
         // if enter is pressed and the entered string is no valid number, reset it
         if te_response.lost_focus() {
-            if let Err(_) = val_str.parse::<f32>() {
+            if let Err(_) = val_str.parse::<T>() {
                 *val_str = format!("{0:.1$}", *value, precision).to_owned();
             }
         }
         if te_response.changed() {
-            if let Ok(x) = val_str.parse::<f32>() {
+            if let Ok(x) = val_str.parse::<T>() {
                 *value = x;
                 changed = true;
             }
@@ -226,10 +238,8 @@ impl RitzelApp {
                 Column::Left => &mut self.left,
                 _            => &mut self.right,
             };
-            let mut float_proxy = vars.teeth as f32;
-            let changed = number_spinner(ui, &mut float_proxy, &mut vars.t_str, column != self.locked_column, 1.0, 1.0, f32::INFINITY, 0, column as i32);
+            let changed = number_spinner(ui, &mut vars.teeth, &mut vars.t_str, column != self.locked_column, 1, 1, 100000, 0, column as i32);
             if changed {
-                vars.teeth = float_proxy.round() as u32;
                 self.recompute_from(column);
             }
             ui.selectable_value(&mut self.locked_column, column, "locked");
@@ -274,5 +284,4 @@ impl eframe::App for RitzelApp {
         });
     }
 }
-
 
