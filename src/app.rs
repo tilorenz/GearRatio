@@ -124,7 +124,7 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
 
             if delta != 0.0 {
                 state.offset += delta;
-                println!("offset: {}", state.offset);
+                //println!("offset: {}", state.offset);
                 if state.offset > 20.0 {
                     state.offset = 0.0;
                     *value = (*value + step).min(max_value);
@@ -135,6 +135,10 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
                     changed = true;
                 }
                 ui.ctx().data_mut(|d| d.insert_temp(myid, state));
+                // number changed from scroll/drag, so we need to update the text field
+                if changed {
+                    *val_str = format!("{0:.1$}", *value, precision).to_owned();
+                }
             }
         }
 
@@ -156,7 +160,7 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
         // if enter is pressed and the entered string is no valid number, reset it
         if te_response.lost_focus() {
             if let Err(_) = val_str.parse::<f32>() {
-                *val_str = String::from(value.to_string());
+                *val_str = format!("{0:.1$}", *value, precision).to_owned();
             }
         }
         if te_response.changed() {
@@ -165,7 +169,6 @@ fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, inte
                 changed = true;
             }
         }
-
     });
     changed
 }
@@ -227,7 +230,6 @@ impl RitzelApp {
             let changed = number_spinner(ui, &mut float_proxy, &mut vars.t_str, column != self.locked_column, 1.0, 1.0, f32::INFINITY, 0, column as i32);
             if changed {
                 vars.teeth = float_proxy.round() as u32;
-                vars.t_str = String::from(vars.teeth.to_string());
                 self.recompute_from(column);
             }
             ui.selectable_value(&mut self.locked_column, column, "locked");
@@ -241,7 +243,6 @@ impl RitzelApp {
                 ui.label("Given Ratio: ");
                 let changed = number_spinner(ui, &mut self.given_ratio, &mut self.gr_str, self.locked_column != Column::Ratio, 0.1, 0.1, 100.0, 2, Column::Ratio as i32);
                 if changed {
-                    self.gr_str = String::from(format!("{:.2}", self.given_ratio));
                     self.recompute_from(Column::Ratio);
                 }
             });
