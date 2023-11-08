@@ -76,60 +76,96 @@ pub struct RitzelApp {
     locked_column: Column,
 }
 
+#[derive(Clone, Copy, Default)]
+struct NumberSpinnerState {
+    offset: f32,
+    rect_max: egui::Pos2,
+}
+
+//impl Default for NumberSpinnerState {
+    //fn default() -> Self {
+        //Self {
+            //offset: 0.0,
+            //size: egui::Vec2 { x: 30.0, y: 100.0 },
+        //}
+    //}
+//}
 
 fn number_spinner(ui: &mut egui::Ui, value: &mut f32, val_str: &mut String, interactive: bool, step: f32, min_value: f32, max_value: f32, precision: usize, uiid: i32) -> bool
 {
     let mut changed = false;
+    let myid = egui::Id::new(34234 + uiid);
+    //let mut state: NumberSpinnerState = ui.ctx.ge
+    let mut state: NumberSpinnerState = ui.ctx().data_mut(|d| d.get_temp(myid)).unwrap_or_default();
     ui.vertical(|ui| {
+        // handle scrolling and dragging.
+        // handling drags needs to be done before adding other ui elements to not steal their
+        // input
+        if interactive {
+            let mut delta = 0.0;
+            let mut urect = ui.min_rect();
+            urect.max = state.rect_max;
+
+            // scrolling
+            ui.input(|i| {
+                if let Some(pos) = i.pointer.latest_pos() {
+                    if urect.contains(pos){
+                        delta = i.scroll_delta.y;
+                    }
+                }
+            });
+
+            // dragging
+            let resp = ui.interact(urect, myid, egui::Sense::drag());
+            if resp.dragged() {
+                //println!("Dragged by: {:?}", resp.drag_delta());
+                delta = resp.drag_delta().y;
+            }
+
+            if delta != 0.0 {
+                state.offset += delta;
+                println!("offset: {}", state.offset);
+                if state.offset > 20.0 {
+                    state.offset = 0.0;
+                    *value = (*value + step).min(max_value);
+                    changed = true;
+                } else if state.offset < -20.0 {
+                    state.offset = 0.0;
+                    *value = (*value - step).max(min_value);
+                    changed = true;
+                }
+                ui.ctx().data_mut(|d| d.insert_temp(myid, state));
+            }
+        }
+
         let te = egui::TextEdit::singleline(val_str)
             .interactive(interactive)
             .desired_width(80.0);
 
         ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value + step * 2.0).min(max_value))).weak());
         ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value + step).min(max_value))).weak());
-        let response = ui.add(te);
+        let te_response = ui.add(te);
         ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value - step).max(min_value))).weak());
         ui.label(egui::RichText::new(format!("{1:.0$}", precision, (*value - step * 2.0).max(min_value))).weak());
 
+        if state.rect_max != ui.min_rect().max {
+            state.rect_max = ui.min_rect().max;
+            ui.ctx().data_mut(|d| d.insert_temp(myid, state));
+        }
+
         // if enter is pressed and the entered string is no valid number, reset it
-        if response.lost_focus() {
+        if te_response.lost_focus() {
             if let Err(_) = val_str.parse::<f32>() {
                 *val_str = String::from(value.to_string());
             }
         }
-        if response.changed() {
+        if te_response.changed() {
             if let Ok(x) = val_str.parse::<f32>() {
                 *value = x;
                 changed = true;
             }
         }
 
-        // handle scrolling
-        if interactive {
-            // TODO accumulate delta and only do the scroll if it surpassed some value.
-            // ideally, also animate that.
-            // currently, this is broken for laptop touchpads
-            let mut delta = 0.0;
-            ui.input(|i| {
-                if let Some(pos) = i.pointer.latest_pos() {
-                    if ui.min_rect().contains(pos){
-                        delta = i.scroll_delta.y;
-                    }
-                }
-            });
-            if delta > 0.0 {
-                *value = (*value + step).min(max_value);
-                changed = true;
-            } else if delta < 0.0 {
-                *value = (*value - step).max(min_value);
-                changed = true;
-            }
-
-            let resp = ui.interact(ui.min_rect(), egui::Id::new(34234 + uiid), egui::Sense::drag());
-            if resp.dragged() {
-                println!("Dragged by: {:?}", resp.drag_delta());
-            }
-        }
     });
     changed
 }
