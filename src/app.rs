@@ -53,15 +53,13 @@ impl Column {
 }
 
 struct SideVars {
-    //column: Column,
     teeth: u32,
     t_str: String,
 }
 
 impl SideVars {
-    fn new(column: Column, teeth: u32) -> SideVars {
+    fn new(teeth: u32) -> SideVars {
         SideVars{
-            //column,
             teeth,
             t_str: String::from(teeth.to_string()),
         }
@@ -84,14 +82,39 @@ struct NumberSpinnerState {
     rect_max: egui::Pos2,
 }
 
+struct NumberSpinner<'a, T>
+where
+    T: num_traits::NumAssign + PartialOrd + Display + FromPrimitive + FromStr + Copy
+{
+    ui: &'a mut egui::Ui,
+    value: &'a mut T,
+    val_str: &'a mut String,
+    interactive: bool,
+    step: T,
+    min_value: T,
+    max_value: T,
+    precision: usize,
+    uiid: i32,
+}
+
+impl<'a, T> NumberSpinner<'a, T>
+where
+    T: num_traits::NumAssign + PartialOrd + Display + FromPrimitive + FromStr + Copy
+{
+    fn go(&mut self) -> bool {
+        number_spinner(self.ui, self.value, self.val_str, self.interactive, self.step, self.min_value, self.max_value, self.precision, self.uiid)
+    }
+}
+
+
 fn number_spinner<T>(ui: &mut egui::Ui, value: &mut T, val_str: &mut String, interactive: bool, step: T, min_value: T, max_value: T, precision: usize, uiid: i32) -> bool
 where
     // aaaah just give me a sane number type
     T: num_traits::NumAssign + PartialOrd + Display + FromPrimitive + FromStr + Copy
 {
     let mut changed = false;
+    // used to keep track of dragging and scrolling state
     let myid = egui::Id::new(34234 + uiid);
-    //let mut state: NumberSpinnerState = ui.ctx.ge
     let mut state: NumberSpinnerState = ui.ctx().data_mut(|d| d.get_temp(myid)).unwrap_or_default();
     ui.vertical(|ui| {
         // handle scrolling and dragging.
@@ -151,6 +174,7 @@ where
         ui.label(egui::RichText::new(format!("{1:.0$}", precision, clamp_max(*value + step * T::from_f32(2.0).unwrap(), max_value))).weak());
         ui.label(egui::RichText::new(format!("{1:.0$}", precision, clamp_max(*value + step, max_value))).weak());
         let te_response = ui.add(te);
+        // again, a bit verbose to avoid underflows
         ui.label(egui::RichText::new(
                 if *value  >= min_value + step - T::from_f32(0.00001).unwrap() {
                     format!("{1:.0$}", precision, *value - step)
@@ -164,6 +188,8 @@ where
                     "".to_owned()
                 }).weak());
 
+        // we need the screen rect of the whole spinner to sense drags / scrolls, but we don't
+        // know it until the other UI elements have been added, so just cache it from last frame
         if state.rect_max != ui.min_rect().max {
             state.rect_max = ui.min_rect().max;
             ui.ctx().data_mut(|d| d.insert_temp(myid, state));
@@ -189,8 +215,8 @@ where
 impl RitzelApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         RitzelApp {
-            left: SideVars::new(Column::Left, 10),
-            right: SideVars::new(Column::Right, 15),
+            left: SideVars::new(10),
+            right: SideVars::new(15),
             given_ratio: 1.5,
             actual_ratio: 1.5,
             ar_str: String::from(1.5.to_string()),
@@ -242,7 +268,17 @@ impl RitzelApp {
                 Column::Left => &mut self.left,
                 _            => &mut self.right,
             };
-            let changed = number_spinner(ui, &mut vars.teeth, &mut vars.t_str, column != self.locked_column, 1, 1, 100000, 0, column as i32);
+            let changed = NumberSpinner {
+                ui,
+                value: &mut vars.teeth,
+                val_str: &mut vars.t_str,
+                interactive: column != self.locked_column,
+                step: 1,
+                min_value: 1,
+                max_value: 100000,
+                precision: 1,
+                uiid: column as i32,
+            }.go();
             if changed {
                 self.recompute_from(column);
             }
@@ -255,7 +291,17 @@ impl RitzelApp {
             // given ratio row
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Given Ratio: ").strong());
-                let changed = number_spinner(ui, &mut self.given_ratio, &mut self.gr_str, self.locked_column != Column::Ratio, 0.1, 0.1, 100.0, 2, Column::Ratio as i32);
+                let changed = NumberSpinner {
+                    ui,
+                    value: &mut self.given_ratio,
+                    val_str: &mut self.gr_str,
+                    interactive: self.locked_column != Column::Ratio,
+                    step: 0.1,
+                    min_value: 0.1,
+                    max_value: 100.0,
+                    precision: 2,
+                    uiid: Column::Ratio as i32,
+                }.go();
                 if changed {
                     self.recompute_from(Column::Ratio);
                 }
